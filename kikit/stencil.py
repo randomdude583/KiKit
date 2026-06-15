@@ -19,8 +19,48 @@ from shapely.geometry import Point
 OUTER_BORDER = fromMm(7.5)
 INNER_BORDER = fromMm(5)
 MOUNTING_HOLES_COUNT = 3
-MOUNTING_HOLE_R = fromMm(1)
 HOLE_SPACING = fromMm(20)
+PIN_HOLE_R = fromMm(1)
+
+DEFAULT_SCREW_SIZE_MM = 2
+
+_SCREW_SPECS = {
+    2: {"shaft_r": fromMm(1),   "head_dia": fromMm(4.5)},
+    3: {"shaft_r": fromMm(1.5), "head_dia": fromMm(6.0)},
+}
+
+
+def _applyScrewSize(screwSizeMm):
+    global SCREW_SIZE_MM, SCREW_HOLE_R, _SCREW_HEAD_DIA, REGISTER_ARM_WIDTH, REGISTER_HOLE_OFFSET
+    SCREW_SIZE_MM = screwSizeMm
+    spec = _SCREW_SPECS[SCREW_SIZE_MM]
+    SCREW_HOLE_R = spec["shaft_r"]
+    _SCREW_HEAD_DIA = spec["head_dia"]
+    REGISTER_ARM_WIDTH = _SCREW_HEAD_DIA + fromMm(0.5)
+    REGISTER_HOLE_OFFSET = _SCREW_HEAD_DIA / 2 + REGISTER_COUNTERSINK_EDGE_GAP
+
+
+def setScrewSize(screwSize):
+    if isinstance(screwSize, str):
+        screwSize = screwSize.strip().upper()
+        if screwSize.startswith("M"):
+            screwSize = screwSize[1:]
+        try:
+            screwSize = int(screwSize)
+        except ValueError:
+            raise RuntimeError(f"Unsupported screw size '{screwSize}'. Use M2 or M3")
+
+    if screwSize not in _SCREW_SPECS:
+        raise RuntimeError(f"Unsupported screw size '{screwSize}'. Use M2 or M3")
+
+    _applyScrewSize(screwSize)
+
+
+REGISTER_COUNTERSINK_EDGE_GAP = fromMm(0.25)
+REGISTER_ARM_TO_STENCIL_HOLE_CENTER = fromMm(3.75)
+STENCIL_HOLE_CENTER_TO_BORDER = fromMm(3.25)
+
+_applyScrewSize(DEFAULT_SCREW_SIZE_MM)
 
 def addBottomCounterpart(board, item):
     item = item.Duplicate()
@@ -144,38 +184,50 @@ def addJigFrame(board, jigFrameSize, bridgeWidth=fromMm(2),
 
     jigFrameSize is a tuple (width, height).
     """
+    # Fixed distance from outer frame edge to mounting hole center.
+    # KiCAD paste-circle rendering requires a +0.5 mm compensation to achieve
+    # the measured target distance in output geometry.
+    mountingOffset = STENCIL_HOLE_CENTER_TO_BORDER + fromMm(0.5)
+    # Set border extension so the stencil-hole center is offset by
+    # REGISTER_ARM_TO_STENCIL_HOLE_CENTER from the end of the register arm.
+    borderExtension = max(fromMm(0),
+        REGISTER_ARM_WIDTH + REGISTER_ARM_TO_STENCIL_HOLE_CENTER + mountingOffset
+        - (OUTER_BORDER + INNER_BORDER))
     bBox = findBoardBoundingBox(board)
     frameSize = rectByCenter(rectCenter(bBox),
-        jigFrameSize[0] + 2 * (OUTER_BORDER + INNER_BORDER),
-        jigFrameSize[1] + 2 * (OUTER_BORDER + INNER_BORDER))
+        jigFrameSize[0] + 2 * (OUTER_BORDER + INNER_BORDER + borderExtension),
+        jigFrameSize[1] + 2 * (OUTER_BORDER + INNER_BORDER + borderExtension))
     cutSize = rectByCenter(rectCenter(bBox),
-        jigFrameSize[0] + 2 * (OUTER_BORDER + INNER_BORDER) - fromMm(1),
-        jigFrameSize[1] + 2 * (OUTER_BORDER + INNER_BORDER) - fromMm(1))
+        jigFrameSize[0] + 2 * (OUTER_BORDER + INNER_BORDER + borderExtension) - fromMm(1),
+        jigFrameSize[1] + 2 * (OUTER_BORDER + INNER_BORDER + borderExtension) - fromMm(1))
     addFrame(board, cutSize, bridgeWidth, bridgeSpacing, clearance)
 
+    # Distance from outer frame edge to mounting hole center.
+
     for i in range(MOUNTING_HOLES_COUNT):
-        x = frameSize.GetX() + OUTER_BORDER / 2 + (i + 1) * (frameSize.GetWidth() - OUTER_BORDER) / (MOUNTING_HOLES_COUNT + 1)
-        addHole(board, toKiCADPoint((x, OUTER_BORDER / 2 + frameSize.GetY())), MOUNTING_HOLE_R)
-        addHole(board, toKiCADPoint((x, - OUTER_BORDER / 2 +frameSize.GetY() + frameSize.GetHeight())), MOUNTING_HOLE_R)
+        x = frameSize.GetX() + mountingOffset + (i + 1) * (frameSize.GetWidth() - 2 * mountingOffset) / (MOUNTING_HOLES_COUNT + 1)
+        addHole(board, toKiCADPoint((x, mountingOffset + frameSize.GetY())), SCREW_HOLE_R)
+        addHole(board, toKiCADPoint((x, - mountingOffset +frameSize.GetY() + frameSize.GetHeight())), SCREW_HOLE_R)
     for i in range(MOUNTING_HOLES_COUNT):
-        y = frameSize.GetY() + OUTER_BORDER / 2 + (i + 1) * (frameSize.GetHeight() - OUTER_BORDER) / (MOUNTING_HOLES_COUNT + 1)
-        addHole(board, toKiCADPoint((OUTER_BORDER / 2 + frameSize.GetX(), y)), MOUNTING_HOLE_R)
-        addHole(board, toKiCADPoint((- OUTER_BORDER / 2 +frameSize.GetX() + frameSize.GetWidth(), y)), MOUNTING_HOLE_R)
+        y = frameSize.GetY() + mountingOffset + (i + 1) * (frameSize.GetHeight() - 2 * mountingOffset) / (MOUNTING_HOLES_COUNT + 1)
+        addHole(board, toKiCADPoint((mountingOffset + frameSize.GetX(), y)), SCREW_HOLE_R)
+        addHole(board, toKiCADPoint((- mountingOffset +frameSize.GetX() + frameSize.GetWidth(), y)), SCREW_HOLE_R)
 
     PIN_TOLERANCE = fromMm(0.05)
-    addHole(board, tl(frameSize) + toKiCADPoint((OUTER_BORDER / 2, OUTER_BORDER / 2)), MOUNTING_HOLE_R + PIN_TOLERANCE)
-    addHole(board, tr(frameSize) + toKiCADPoint((-OUTER_BORDER / 2, OUTER_BORDER / 2)), MOUNTING_HOLE_R + PIN_TOLERANCE)
-    addHole(board, br(frameSize) + toKiCADPoint((-OUTER_BORDER / 2, -OUTER_BORDER / 2)), MOUNTING_HOLE_R + PIN_TOLERANCE)
-    addHole(board, bl(frameSize) + toKiCADPoint((OUTER_BORDER / 2, -OUTER_BORDER / 2)), MOUNTING_HOLE_R + PIN_TOLERANCE)
+    addHole(board, tl(frameSize) + toKiCADPoint((OUTER_BORDER / 2, OUTER_BORDER / 2)), PIN_HOLE_R + PIN_TOLERANCE)
+    addHole(board, tr(frameSize) + toKiCADPoint((-OUTER_BORDER / 2, OUTER_BORDER / 2)), PIN_HOLE_R + PIN_TOLERANCE)
+    addHole(board, br(frameSize) + toKiCADPoint((-OUTER_BORDER / 2, -OUTER_BORDER / 2)), PIN_HOLE_R + PIN_TOLERANCE)
+    addHole(board, bl(frameSize) + toKiCADPoint((OUTER_BORDER / 2, -OUTER_BORDER / 2)), PIN_HOLE_R + PIN_TOLERANCE)
 
 def jigMountingHoles(jigFrameSize, origin=toKiCADPoint((0, 0))):
     """ Get list of all mounting holes in a jig of given size """
     w, h = jigFrameSize
+    holeOffset = REGISTER_HOLE_OFFSET
     holes = [
-        toKiCADPoint(((w + INNER_BORDER) / 2,0 )),
-        toKiCADPoint((-(w + INNER_BORDER) / 2,0 )),
-        toKiCADPoint((0,(h + INNER_BORDER) / 2)),
-        toKiCADPoint((0,-(h + INNER_BORDER) / 2)),
+        toKiCADPoint((w / 2 + holeOffset, 0 )),
+        toKiCADPoint((-w / 2 - holeOffset, 0 )),
+        toKiCADPoint((0, h / 2 + holeOffset)),
+        toKiCADPoint((0, -h / 2 - holeOffset)),
     ]
     return [x + origin for x in holes]
 
@@ -188,10 +240,10 @@ def createOuterPolygon(board, jigFrameSize, outerBorder):
     outerSubstrate.substrates = outerSubstrate.substrates.buffer(outerBorder)
     tabs = []
     for hole in holes:
-        tab, _ = outerSubstrate.tab(hole, centerpoint - hole, INNER_BORDER, maxHeight=fromMm(1000))
+        tab, _ = outerSubstrate.tab(hole, centerpoint - hole, REGISTER_ARM_WIDTH, maxHeight=fromMm(1000))
         tabs.append(tab)
     outerSubstrate.union(tabs)
-    outerSubstrate.union([Point(x).buffer(INNER_BORDER / 2) for x in holes])
+    outerSubstrate.union([Point(x).buffer(REGISTER_ARM_WIDTH / 2) for x in holes])
     outerSubstrate.millFillets(fromMm(3))
     return outerSubstrate.exterior(), holes
 
@@ -200,15 +252,15 @@ def createOffsetPolygon(board, offset):
     outerSubstrate.substrates = outerSubstrate.substrates.buffer(offset)
     return outerSubstrate.exterior()
 
-def m2countersink():
-    HEAD_DIA = fromMm(4.5)
+def screwCountersink():
+    HEAD_DIA = _SCREW_HEAD_DIA
     HOLE_LEN = fromMm(10)
     SINK_EXTRA = fromMm(0.3)
     sinkH = np.sqrt(HEAD_DIA**2 / 4)
 
     sink = solid.cylinder(d1=0, d2=HEAD_DIA, h=sinkH)
     sinkE = solid.cylinder(d=HEAD_DIA, h=SINK_EXTRA)
-    hole = solid.cylinder(h=HOLE_LEN, d=fromMm(2))
+    hole = solid.cylinder(h=HOLE_LEN, d=fromMm(SCREW_SIZE_MM))
     return sinkE + solid.utils.down(sinkH)(sink) + solid.utils.down(HOLE_LEN)(hole)
 
 def mirrorX(linestring, origin):
@@ -246,7 +298,7 @@ def makeRegister(board, jigFrameSize, jigThickness, pcbThickness,
 
     register = body - innerCutout - registerCutout
     for hole in holes:
-        register = register - solid.translate([hole[0], hole[1], top])(m2countersink())
+        register = register - solid.translate([hole[0], hole[1], top])(screwCountersink())
     return solid.scale(toMm(1))(
             solid.translate([-centerpoint[0], -centerpoint[1], 0])(register))
 
@@ -347,7 +399,8 @@ from pathlib import Path
 import os
 
 def create(inputboard, outputdir, jigsize, jigthickness, pcbthickness,
-           registerborder, tolerance, ignore, cutout):
+           registerborder, tolerance, ignore, cutout, screwsize="M2"):
+    setScrewSize(screwsize)
     board = pcbnew.LoadBoard(inputboard)
     refs = parseReferences(ignore)
     removeComponents(board, refs)

@@ -45,6 +45,9 @@ def createPrinted(**kwargs):
     help="Register borders in mm: <outer> <inner>")
 @click.option("--tolerance", type=float, default=0.05,
     help="Enlarges the register by the tolerance value")
+@click.option("--screwsize", type=click.Choice(["M2", "M3"], case_sensitive=False), default="M2",
+    show_default=True,
+    help="Mounting screw size for jig and register geometry")
 @click.option("--ignore", type=str, default="",
     help="Comma separated list of components references to exclude from the stencil")
 @click.option("--cutout", type=str, default="",

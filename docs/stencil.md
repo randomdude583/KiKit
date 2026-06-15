@@ -65,8 +65,8 @@ stencils which fit a simple 3D printed or lasercut alignment jig.
 
 The jig is available as [Fusion 360 model](resources/jig.f3d),
 [STEP](resources/jig.step) or [3MF](resources/jig.3mf).It it designed to be cut
-from 3mm thick acrylic but you can also print it. You need 4 2mm pins, 8 M2
-screws and that's it. The frame can be customized - there two parameters of the
+from 3mm thick acrylic but you can also print it. You need 4 2mm pins, 8 M2 or
+M3 screws (matching `--screwsize`) and that's it. The frame can be customized - there two parameters of the
 model, `frameWidth` and `frameHeight` which define the largest PCB it can
 accept. I usually use 100x100mm and 60x60mm.
 
@@ -74,8 +74,19 @@ Then you issue the following command within KiKit:
 ```
 kikit stencil create  --jigsize 60 60 <boardFile> <outputDir>
 ```
+where parameters include:
+```
+--jigsize INTEGER...       Jig frame size in mm: <width> <height>
+--jigthickness FLOAT       Jig thickness in mm
+--pcbthickness FLOAT       PCB thickness in mm
+--registerborder FLOAT...  Register borders in mm: <outer> <inner>
+--tolerance FLOAT          Enlarges the register by the tolerance value
+--screwsize [M2|M3]        Mounting screw size for jig/register geometry
+```
 Note that there are more options for this command, see output of `kikit stencil
 create --help`.
+Use `--screwsize M2` or `--screwsize M3` to match your jig hardware; the
+default is `M2`.
 
 KiKit will produce 2 STL files for aligning the PCB and a zip file with gerbers
 for the manufacturer. When you order your stencil, let them make both top and
@@ -93,8 +104,8 @@ Once you break the stencils off, you mount them in the jig frame:
 
 ![Stencil](resources/stencil2.jpg)
 
-Then you print alignment parts for your board and mount in onto the jig using M2
-screws:
+Then you print alignment parts for your board and mount it onto the jig using
+M2 or M3 screws (matching `--screwsize`):
 
 ![Stencil](resources/stencil3.jpg)
 
